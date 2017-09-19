@@ -205,7 +205,7 @@ impl ReadHandle {
         F: FnMut(&[Arc<Vec<DataType>>]) -> T,
     {
         match *self {
-            ReadHandle::Sharded(ref shards) => shards[::shard_by(key, shards.len())]
+            ReadHandle::Sharded(ref shards) => shards[::shard_by(Some(key), shards.len())]
                 .as_ref()
                 .unwrap()
                 .find_and(key, then, block),
@@ -219,7 +219,7 @@ impl ReadHandle {
         F: FnMut(&[Arc<Vec<DataType>>]) -> T,
     {
         match *self {
-            ReadHandle::Sharded(ref shards) => shards[::shard_by(key, shards.len())]
+            ReadHandle::Sharded(ref shards) => shards[::shard_by(Some(key), shards.len())]
                 .as_ref()
                 .unwrap()
                 .try_find_and(key, then),

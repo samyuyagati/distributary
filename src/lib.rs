@@ -325,23 +325,29 @@
 const SHARDS: usize = 2;
 
 #[inline]
-fn shard_by(dt: &DataType, shards: usize) -> usize {
-    match *dt {
-        DataType::Int(n) => n as usize % shards,
-        DataType::BigInt(n) => n as usize % shards,
-        DataType::Text(..) | DataType::TinyText(..) => {
-            use std::hash::Hasher;
-            use std::borrow::Cow;
-            let mut hasher = fnv::FnvHasher::default();
-            let s: Cow<str> = dt.into();
-            hasher.write(s.as_bytes());
-            hasher.finish() as usize % shards
-        }
-        ref x => {
-            println!("asked to shard on value {:?}", x);
-            unimplemented!();
-        }
-    }
+fn shard_by<'a, I>(keys: I, shards: usize) -> usize
+where
+    I: IntoIterator<Item = &'a DataType>,
+{
+    let v: usize = keys.into_iter()
+        .map(|dt| match *dt {
+            DataType::Int(n) => n as usize,
+            DataType::BigInt(n) => n as usize,
+            DataType::Text(..) | DataType::TinyText(..) => {
+                use std::hash::Hasher;
+                use std::borrow::Cow;
+                let mut hasher = fnv::FnvHasher::default();
+                let s: Cow<str> = dt.into();
+                hasher.write(s.as_bytes());
+                hasher.finish() as usize
+            }
+            ref x => {
+                println!("asked to shard on value {:?}", x);
+                unimplemented!();
+            }
+        })
+        .sum();
+    v % shards
 }
 
 #[cfg(debug_assertions)]

@@ -311,8 +311,7 @@ impl Domain {
             let shard = if triggers.len() == 1 {
                 0
             } else {
-                assert!(key.len() == 1);
-                ::shard_by(&key[0], triggers.len())
+                ::shard_by(&key, triggers.len())
             };
             self.concurrent_replays += 1;
             trace!(self.log, "sending replay request";
@@ -847,7 +846,7 @@ impl Domain {
                                             &mut txs[0]
                                         } else {
                                             let n = txs.len();
-                                            &mut txs[::shard_by(key, n)]
+                                            &mut txs[::shard_by(Some(key), n)]
                                         };
                                         tx.send(box Packet::RequestPartialReplay {
                                             key: vec![key.clone()],

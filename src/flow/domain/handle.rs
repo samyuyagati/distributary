@@ -36,25 +36,23 @@ impl DomainInputHandle {
             if key.is_empty() {
                 unreachable!("sharded base without a key?");
             }
-            if key.len() != 1 {
-                // base sharded by complex key
-                unimplemented!();
-            }
-            let key_col = key[0];
-            let shard = {
-                let key = match p.data()[0] {
-                    Record::Positive(ref r) | Record::Negative(ref r) => &r[key_col],
-                    Record::DeleteRequest(ref k) => &k[0],
-                };
-                if !p.data().iter().all(|r| match *r {
-                    Record::Positive(ref r) | Record::Negative(ref r) => &r[key_col] == key,
-                    Record::DeleteRequest(ref k) => k.len() == 1 && &k[0] == key,
-                }) {
-                    // batch with different keys to sharded base
-                    unimplemented!();
-                }
-                ::shard_by(key, self.0.len())
-            };
+            let shard = ::shard_by(
+                key.iter().map(|&key_col| {
+                    let key = match p.data()[0] {
+                        Record::Positive(ref r) | Record::Negative(ref r) => &r[key_col],
+                        Record::DeleteRequest(ref k) => &k[0],
+                    };
+                    if !p.data().iter().all(|r| match *r {
+                        Record::Positive(ref r) | Record::Negative(ref r) => &r[key_col] == key,
+                        Record::DeleteRequest(ref k) => k.len() == 1 && &k[0] == key,
+                    }) {
+                        // batch with different keys to sharded base
+                        unimplemented!();
+                    }
+                    key
+                }),
+                self.0.len(),
+            );
             self.0[shard].send(p)
         }
     }

@@ -8,7 +8,7 @@ use std::collections::HashSet;
 pub struct Sharder {
     txs: Vec<(LocalNodeIndex, ChannelSender<Box<Packet>>)>,
     sharded: VecMap<Box<Packet>>,
-    shard_by: usize,
+    shard_by: Vec<usize>,
 }
 
 impl Clone for Sharder {
@@ -16,13 +16,13 @@ impl Clone for Sharder {
         Sharder {
             txs: self.txs.clone(),
             sharded: Default::default(),
-            shard_by: self.shard_by,
+            shard_by: self.shard_by.clone(),
         }
     }
 }
 
 impl Sharder {
-    pub fn new(by: usize) -> Self {
+    pub fn new(by: Vec<usize>) -> Self {
         Self {
             txs: Default::default(),
             shard_by: by,
@@ -36,7 +36,7 @@ impl Sharder {
         Self {
             txs: txs,
             sharded: VecMap::default(),
-            shard_by: self.shard_by,
+            shard_by: self.shard_by.clone(),
         }
     }
 
@@ -48,18 +48,21 @@ impl Sharder {
         }
     }
 
-    pub fn sharded_by(&self) -> usize {
-        self.shard_by
+    pub fn sharded_by(&self) -> &[usize] {
+        &self.shard_by[..]
     }
 
     #[inline]
     fn to_shard(&self, r: &Record) -> usize {
-        self.shard(&r[self.shard_by])
+        self.shard(self.shard_by.iter().map(|&i| &r[i]))
     }
 
     #[inline]
-    fn shard(&self, dt: &DataType) -> usize {
-        ::shard_by(dt, self.txs.len())
+    fn shard<'a, I>(&self, keys: I) -> usize
+    where
+        I: IntoIterator<Item = &'a DataType>,
+    {
+        ::shard_by(keys, self.txs.len())
     }
 
     pub fn process(
@@ -90,8 +93,7 @@ impl Sharder {
                     for_keys
                         .drain()
                         .map(|key| {
-                            assert_eq!(key.len(), 1);
-                            let shard = self.shard(&key[0]);
+                            let shard = self.shard(&key[..]);
                             (shard, key)
                         })
                         .fold(VecMap::new(), |mut hm, (shard, key)| {

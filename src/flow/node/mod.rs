@@ -221,7 +221,7 @@ impl Node {
 // attributes
 impl Node {
     pub fn sharded_by(&self) -> Sharding {
-        self.sharded_by
+        self.sharded_by.clone()
     }
 
     pub fn add_child(&mut self, child: LocalNodeIndex) {

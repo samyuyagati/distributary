@@ -298,8 +298,8 @@ impl Blender {
             .unwrap_or_else(Vec::new);
         let mut is_primary = false;
         if key.is_empty() {
-            if let prelude::Sharding::ByColumn(col) = self.ingredients[base].sharded_by() {
-                key = vec![col];
+            if let prelude::Sharding::ByColumns(ref cols) = self.ingredients[base].sharded_by() {
+                key = cols.clone();
             }
         } else {
             is_primary = true;

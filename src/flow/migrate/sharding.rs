@@ -6,11 +6,11 @@ use slog::Logger;
 use petgraph;
 use ops;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum Sharding {
     None,
     Random,
-    ByColumn(usize),
+    ByColumns(Vec<usize>),
 }
 
 pub fn shard(
@@ -57,7 +57,7 @@ pub fn shard(
             let s = graph[node]
                 .with_reader(|r| r.key())
                 .unwrap()
-                .map(Sharding::ByColumn)
+                .map(|key_col| Sharding::ByColumns(vec![key_col]))
                 .unwrap_or(Sharding::None);
             if s == Sharding::None {
                 info!(log, "de-sharding prior to stream-only reader"; "node" => ?node);
@@ -68,7 +68,7 @@ pub fn shard(
 
             if s != input_shardings[&ni] {
                 // input is sharded by different key -- need shuffle
-                reshard(log, new, &mut swaps, graph, ni, node, s);
+                reshard(log, new, &mut swaps, graph, ni, node, s.clone());
             }
             graph.node_weight_mut(node).unwrap().shard_by(s);
             continue;
@@ -78,7 +78,7 @@ pub fn shard(
         };
         if need_sharding.is_empty() &&
             (input_shardings.len() == 1 ||
-                input_shardings.iter().all(|(_, &s)| s == Sharding::None))
+                input_shardings.iter().all(|(_, s)| *s == Sharding::None))
         {
             let s = input_shardings.into_iter().map(|(_, s)| s).next().unwrap();
             info!(log, "preserving sharding of pass-through node";
@@ -150,7 +150,7 @@ pub fn shard(
                     graph
                         .node_weight_mut(node)
                         .unwrap()
-                        .shard_by(Sharding::ByColumn(want_sharding));
+                        .shard_by(Sharding::ByColumns(vec![want_sharding]));
                     continue;
                 }
                 Some(want_sharding_input) => {
@@ -188,16 +188,24 @@ pub fn shard(
 
                     if ok {
                         // we can shard ourselves and our inputs by a single column!
-                        let s = Sharding::ByColumn(want_sharding);
+                        let s = Sharding::ByColumns(vec![want_sharding]);
                         info!(log, "sharding node doing self-lookup";
                               "node" => ?node,
                               "sharding" => ?s);
 
                         for (ni, col) in want_sharding_input {
-                            let need_sharding = Sharding::ByColumn(col);
+                            let need_sharding = Sharding::ByColumns(vec![col]);
                             if input_shardings[&ni] != need_sharding {
                                 // input is sharded by different key -- need shuffle
-                                reshard(log, new, &mut swaps, graph, ni, node, need_sharding);
+                                reshard(
+                                    log,
+                                    new,
+                                    &mut swaps,
+                                    graph,
+                                    ni,
+                                    node,
+                                    need_sharding.clone(),
+                                );
                                 input_shardings.insert(ni, need_sharding);
                             }
                         }
@@ -252,7 +260,7 @@ pub fn shard(
                 // the output of the union is also sharded by that key. this is sufficiently common
                 // that we want to make sure we don't accidentally shuffle in those cases.
                 for &(ni, src) in &srcs {
-                    if input_shardings[&ni] != Sharding::ByColumn(src) {
+                    if input_shardings[&ni] != Sharding::ByColumns(vec![src]) {
                         // TODO: technically we could revert to Sharding::Random here, which is a
                         // little better than forcing a de-shard, but meh.
                         continue 'outer;
@@ -295,16 +303,16 @@ pub fn shard(
 
             // `col` resolves to the same column we use to lookup in each ancestor,
             // so it's safe for us to shard by `col`!
-            let s = Sharding::ByColumn(col);
+            let s = Sharding::ByColumns(vec![col]);
             info!(log, "sharding node with consistent lookup column";
                       "node" => ?node,
                       "sharding" => ?s);
 
             // we have to ensure that each input is also sharded by that key
             for &(ni, src) in &srcs {
-                let need_sharding = Sharding::ByColumn(src);
+                let need_sharding = Sharding::ByColumns(vec![src]);
                 if input_shardings[&ni] != need_sharding {
-                    reshard(log, new, &mut swaps, graph, ni, node, need_sharding);
+                    reshard(log, new, &mut swaps, graph, ni, node, need_sharding.clone());
                     input_shardings.insert(ni, need_sharding);
                 }
             }
@@ -319,8 +327,8 @@ pub fn shard(
         for &ni in need_sharding.keys() {
             if input_shardings[&ni] != sharding {
                 // ancestor must be forced to right sharding
-                reshard(log, new, &mut swaps, graph, ni, node, sharding);
-                input_shardings.insert(ni, sharding);
+                reshard(log, new, &mut swaps, graph, ni, node, sharding.clone());
+                input_shardings.insert(ni, sharding.clone());
             }
         }
     }
@@ -350,8 +358,8 @@ pub fn shard(
             assert!(!graph[p].is_source());
 
             // and that its children must be sharded somehow (otherwise what is the sharder doing?)
-            let col = graph[n].with_sharder(|s| s.sharded_by()).unwrap();
-            let by = Sharding::ByColumn(col);
+            let cols = Vec::from(graph[n].with_sharder(|s| s.sharded_by()).unwrap());
+            let by = Sharding::ByColumns(cols.clone());
 
             // we can only push sharding above newly created nodes that are not already sharded.
             if !new.contains(&p) || graph[p].sharded_by() != Sharding::None {
@@ -383,7 +391,7 @@ pub fn shard(
                 }
 
                 // shard the base
-                warn!(log, "eagerly sharding unsharded base"; "by" => col, "base" => ?p);
+                warn!(log, "eagerly sharding unsharded base"; "by" => ?cols, "base" => ?p);
                 graph[p].shard_by(by);
                 // remove the sharder at n by rewiring its outgoing edges directly to the base.
                 let mut cs = graph
@@ -407,6 +415,12 @@ pub fn shard(
                 gone.insert(n);
                 continue;
             }
+
+            if cols.len() != 1 {
+                // FIXME: we should resolve all the columns and then push up
+                continue;
+            }
+            let col = cols[0];
 
             let src_cols = graph[p].parent_columns(col);
             if src_cols.len() != 1 {
@@ -446,7 +460,7 @@ pub fn shard(
                     // TODO: we *could* insert a de-shard here
                     continue 'sharders;
                 }
-                let csharding = Sharding::ByColumn(col.unwrap());
+                let csharding = Sharding::ByColumns(Vec::from(col.unwrap()));
 
                 if csharding == by {
                     // sharding by the same key, which is now unnecessary.
@@ -491,7 +505,7 @@ pub fn shard(
 
             // then wire us (n) above the parent instead
             warn!(log, "hoisting sharder above new unsharded node"; "sharder" => ?n, "node" => ?p);
-            let new = graph[grandp].mirror(node::special::Sharder::new(src_col));
+            let new = graph[grandp].mirror(node::special::Sharder::new(vec![src_col]));
             *graph.node_weight_mut(n).unwrap() = new;
             let e = graph.find_edge(grandp, p).unwrap();
             let w = graph.remove_edge(e).unwrap();
@@ -556,9 +570,9 @@ fn reshard(
             n.mark_as_shard_merger(true);
             n
         }
-        Sharding::ByColumn(c) => {
+        Sharding::ByColumns(ref cols) => {
             use flow::node;
-            let mut n = graph[src].mirror(node::special::Sharder::new(c));
+            let mut n = graph[src].mirror(node::special::Sharder::new(cols.clone()));
             n.shard_by(graph[src].sharded_by());
             n
         }

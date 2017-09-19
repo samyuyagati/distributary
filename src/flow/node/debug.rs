@@ -21,7 +21,7 @@ impl fmt::Debug for Node {
 impl Node {
     pub fn describe(&self, f: &mut fmt::Write, idx: NodeIndex) -> fmt::Result {
         let border = match self.sharded_by {
-            Sharding::ByColumn(_) | Sharding::Random => "filled,dashed",
+            Sharding::ByColumns(_) | Sharding::Random => "filled,dashed",
             _ => "filled",
         };
         write!(
