@@ -86,10 +86,15 @@ pub fn shard(
             // non-internal nodes are always pass-through
             HashMap::new()
         };
-        if need_sharding.is_empty() &&
-            (input_shardings.len() == 1 || input_shardings.iter().all(|(_, s)| s.is_none()))
+        if need_sharding.is_empty()
+            && (input_shardings.len() == 1 || input_shardings.iter().all(|(_, s)| s.is_none()))
         {
-            let mut s = input_shardings.iter().map(|(_, s)| s).cloned().next().unwrap();
+            let mut s = input_shardings
+                .iter()
+                .map(|(_, s)| s)
+                .cloned()
+                .next()
+                .unwrap();
             if input_shardings
                 .iter()
                 .any(|(_, s)| *s == Sharding::ForcedNone)
