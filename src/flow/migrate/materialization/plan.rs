@@ -114,8 +114,13 @@ impl<'a> Plan<'a> {
     /// paths about them. It also notes if any data backfills will need to be run, which is
     /// eventually reported back by `finalize`.
     pub fn add(&mut self, index_on: Vec<usize>) {
-        // TODO: what if we have two paths with the same source because of a fork-join? we'd need
-        // to buffer somewhere to avoid splitting pieces...
+        if !self.partial && !self.paths.is_empty() {
+            // non-partial views should not have one replay path per index. that would cause us to
+            // replay several times, even though one full replay should always be sufficient.
+            // we do need to keep track of the fact that there should be an index here though.
+            self.tags.entry(index_on).or_default();
+            return;
+        }
 
         // inform domains about replay paths
         let mut tags = Vec::new();
@@ -147,7 +152,7 @@ impl<'a> Plan<'a> {
                         self.m
                             .domains_on_path
                             .entry(tag.clone())
-                            .or_insert_with(Vec::new)
+                            .or_default()
                             .push(domain);
                     }
                 }
@@ -292,7 +297,7 @@ impl<'a> Plan<'a> {
 
         self.tags
             .entry(index_on)
-            .or_insert_with(Vec::new)
+            .or_default()
             .extend(tags);
     }
 
@@ -310,26 +315,23 @@ impl<'a> Plan<'a> {
         let s = self.graph[self.node]
             .with_reader(|r| {
                 // we need to make sure there's an entry in readers for this reader!
-                match self.graph[self.node].sharded_by() {
-                    Sharding::None => {
-                        self.m
-                            .readers
-                            .lock()
-                            .unwrap()
-                            .insert(self.node, ReadHandle::Singleton(None));
+                if self.graph[self.node].sharded_by().is_none() {
+                    self.m
+                        .readers
+                        .lock()
+                        .unwrap()
+                        .insert(self.node, ReadHandle::Singleton(None));
+                } else {
+                    use arrayvec::ArrayVec;
+                    let mut shards = ArrayVec::new();
+                    for _ in 0..::SHARDS {
+                        shards.push(None);
                     }
-                    _ => {
-                        use arrayvec::ArrayVec;
-                        let mut shards = ArrayVec::new();
-                        for _ in 0..::SHARDS {
-                            shards.push(None);
-                        }
-                        self.m
-                            .readers
-                            .lock()
-                            .unwrap()
-                            .insert(self.node, ReadHandle::Sharded(shards));
-                    }
+                    self.m
+                        .readers
+                        .lock()
+                        .unwrap()
+                        .insert(self.node, ReadHandle::Sharded(shards));
                 }
 
                 if self.partial {
