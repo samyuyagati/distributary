@@ -54,6 +54,7 @@ basics = { path = "basics" }
 dataflow = { path = "dataflow" }
 mir = { path = "mir" }
 api = { path = "api" }
+planner = { path = "planner" }
 
 [dependencies.timekeeper]
 version = "0.3.0"
