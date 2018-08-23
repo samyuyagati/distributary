@@ -238,7 +238,7 @@ impl<A: Authority> ControllerHandle<A> {
 
         self.rpc::<_, Option<TableBuilder>>("table_builder", name)
             .context(format!("building Table for {}", name))?
-            .ok_or_else(|| format_err!("view {} does not exist", name))
+            .ok_or_else(|| format_err!("table {} does not exist", name))
             .and_then(|mut m| {
                 if let Some(port) = self.local_port {
                     m = m.with_local_port(port);
@@ -273,7 +273,7 @@ impl<A: Authority> ControllerHandle<A> {
     ) -> Result<ActivationResult, failure::Error> {
         Ok(self
             .rpc("extend_recipe", recipe_addition)
-            .context(format!("extending recipe with : {}", recipe_addition))?)
+            .context(format!("extending recipe with: {}", recipe_addition))?)
     }
 
     /// Replace the existing recipe with this one.
