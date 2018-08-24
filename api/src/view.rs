@@ -1,5 +1,6 @@
 use basics::*;
 use channel::rpc::RpcClient;
+use nom_sql::CreateViewStatement;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
@@ -59,6 +60,7 @@ pub enum ReadReply {
 pub struct ViewBuilder {
     pub node: NodeIndex,
     pub columns: Vec<String>,
+    pub schema: Option<CreateViewStatement>,
     pub shards: Vec<SocketAddr>,
     // one per shard
     pub local_ports: Vec<u16>,
@@ -76,6 +78,7 @@ impl ViewBuilder {
         Ok(View {
             node: self.node,
             columns: self.columns,
+            schema: self.schema,
             shard_addrs: self.shards,
             shards: conns,
             exclusivity: ExclusiveConnection,
@@ -124,6 +127,7 @@ impl ViewBuilder {
         Ok(View {
             node: self.node,
             columns: self.columns,
+            schema: self.schema,
             shard_addrs: self.shards,
             shards: conns,
             exclusivity: SharedConnection,
@@ -140,6 +144,8 @@ impl ViewBuilder {
 pub struct View<E = SharedConnection> {
     node: NodeIndex,
     columns: Vec<String>,
+    schema: Option<CreateViewStatement>,
+
     shards: Vec<ViewRpc>,
     shard_addrs: Vec<SocketAddr>,
 
@@ -152,6 +158,7 @@ impl Clone for View<SharedConnection> {
         View {
             node: self.node,
             columns: self.columns.clone(),
+            schema: self.schema.clone(),
             shards: self.shards.clone(),
             shard_addrs: self.shard_addrs.clone(),
             exclusivity: SharedConnection,
@@ -169,6 +176,7 @@ impl View<SharedConnection> {
             node: self.node,
             local_ports: vec![],
             columns: self.columns,
+            schema: self.schema,
             shards: self.shard_addrs,
         }.build_exclusive()
     }
@@ -179,6 +187,11 @@ impl<E> View<E> {
     /// Get the list of columns in this view.
     pub fn columns(&self) -> &[String] {
         self.columns.as_slice()
+    }
+
+    /// Get the schema definition of this view.
+    pub fn schema(&self) -> Option<&CreateViewStatement> {
+        self.schema.as_ref()
     }
 
     /// Get the local address this `View` is bound to.
