@@ -13,6 +13,7 @@ use std::{io, time};
 use api::builders::*;
 use api::ActivationResult;
 use controller::migrate::materialization::Materializations;
+use controller::recipe::Schema;
 use controller::{ControllerState, DomainHandle, Migration, Recipe, WorkerIdentifier};
 use coordination::CoordinationMessage;
 
@@ -559,7 +560,10 @@ impl ControllerInner {
         self.find_view_for(node).map(|r| {
             let domain = self.ingredients[r].domain();
             let columns = self.ingredients[r].fields().to_vec();
-            let schema = None; // FIXME
+            let schema = self.recipe.schema_for(name).map(|s| match s {
+                Schema::View(s) => s,
+                _ => panic!("no-view schema {:?} returned for view '{}'", s, name),
+            });
             let shards = (0..self.domains[&domain].shards())
                 .map(|i| self.read_addrs[&self.domains[&domain].assignment(i)].clone())
                 .collect();
@@ -621,7 +625,10 @@ impl ControllerInner {
             columns.len(),
             node.fields().len() - base_operator.get_dropped().len()
         );
-        let schema = self.recipe.get_base_schema(base);
+        let schema = self.recipe.schema_for(base).map(|s| match s {
+            Schema::Table(s) => s,
+            _ => panic!("non-base schema {:?} returned for table '{}'", s, base),
+        });
 
         Some(TableBuilder {
             local_port: None,
