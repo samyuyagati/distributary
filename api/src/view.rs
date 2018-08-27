@@ -1,6 +1,6 @@
 use basics::*;
 use channel::rpc::RpcClient;
-use nom_sql::CreateViewStatement;
+use nom_sql::ColumnSpecification;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io;
@@ -60,7 +60,7 @@ pub enum ReadReply {
 pub struct ViewBuilder {
     pub node: NodeIndex,
     pub columns: Vec<String>,
-    pub schema: Option<CreateViewStatement>,
+    pub schema: Option<Vec<ColumnSpecification>>,
     pub shards: Vec<SocketAddr>,
     // one per shard
     pub local_ports: Vec<u16>,
@@ -144,7 +144,7 @@ impl ViewBuilder {
 pub struct View<E = SharedConnection> {
     node: NodeIndex,
     columns: Vec<String>,
-    schema: Option<CreateViewStatement>,
+    schema: Option<Vec<ColumnSpecification>>,
 
     shards: Vec<ViewRpc>,
     shard_addrs: Vec<SocketAddr>,
@@ -190,8 +190,8 @@ impl<E> View<E> {
     }
 
     /// Get the schema definition of this view.
-    pub fn schema(&self) -> Option<&CreateViewStatement> {
-        self.schema.as_ref()
+    pub fn schema(&self) -> Option<&[ColumnSpecification]> {
+        self.schema.as_ref().map(|s| s.as_slice())
     }
 
     /// Get the local address this `View` is bound to.

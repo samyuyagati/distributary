@@ -16,6 +16,7 @@ use controller::migrate::materialization::Materializations;
 use controller::recipe::Schema;
 use controller::{ControllerState, DomainHandle, Migration, Recipe, WorkerIdentifier};
 use coordination::CoordinationMessage;
+use nom_sql::{Column, ColumnSpecification, SqlType};
 
 use hyper::{self, Method, StatusCode};
 use mio::net::TcpListener;
@@ -561,7 +562,13 @@ impl ControllerInner {
             let domain = self.ingredients[r].domain();
             let columns = self.ingredients[r].fields().to_vec();
             let schema = self.recipe.schema_for(name).map(|s| match s {
-                Schema::View(s) => s,
+                Schema::View(s) => {
+                    use std::convert::From;
+                    // XXX(malte): properly derive columns and types by looking at graph here
+                    s.into_iter()
+                        .map(|c| ColumnSpecification::new(Column::from(c.as_str()), SqlType::Text))
+                        .collect()
+                }
                 _ => panic!("no-view schema {:?} returned for view '{}'", s, name),
             });
             let shards = (0..self.domains[&domain].shards())
