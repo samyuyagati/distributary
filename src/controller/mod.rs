@@ -62,6 +62,7 @@ mod handle;
 mod inner;
 mod mir_to_flow;
 mod readers;
+mod schema;
 
 pub use api::builders::*;
 pub use api::prelude::*;
