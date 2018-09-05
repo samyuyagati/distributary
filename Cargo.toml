@@ -81,3 +81,6 @@ name = "basic-distribution"
 [[bin]]
 name = "souplet"
 path = "src/bin/souplet.rs"
+
+[patch.crates-io]
+mio = { git = "https://github.com/carllerche/mio.git", branch = "wtf-pipe" }
