@@ -299,6 +299,8 @@ fn main() {
             // ensure we don't have stale soup (yuck)
             host.just_exec(&["git", "-C", "distributary", "pull", "2>&1"])?
                 .is_ok();
+            host.just_exec(&["git", "-C", "distributary", "checkout", "mio-patch", "2>&1"])?
+                .is_ok();
 
             if do_perf.is_active() {
                 // allow kernel debugging
