@@ -78,6 +78,9 @@ name = "basic-recipe"
 [[example]]
 name = "basic-distribution"
 
+[[example]]
+name = "conference-recipe"
+
 [[bin]]
 name = "souplet"
 path = "src/bin/souplet.rs"
